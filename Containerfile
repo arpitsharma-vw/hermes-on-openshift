@@ -15,6 +15,7 @@ RUN apt-get update \
     ca-certificates \
     curl \
     findutils \
+    git \
     gzip \
     python3 \
     python3-venv \
