@@ -44,7 +44,7 @@ if [[ ! -x "${HERMES_BIN}" ]]; then
     git clone --depth 1 https://github.com/NousResearch/hermes-agent.git "${tmp_dir}/src"
     python3 -m venv "${HERMES_INSTALL_DIR}/venv"
     "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel
-    "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir "${tmp_dir}/src"
+    "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir "${tmp_dir}/src[web]"
 fi
 
 exec "${HERMES_BIN}" "$@"
