@@ -1,0 +1,28 @@
+# Starter variables for a future Hermes container/OpenShift deployment.
+# This is intentionally a planning file, not a complete deployment manifest.
+
+hermes_namespace: dl-playground-arpit
+hermes_profile: ocp
+hermes_home: /opt/hermes/.hermes
+hermes_workspace_dir: /opt/hermes/workspace
+
+# Hermes needs a provider/model that supports at least a 64k context window.
+hermes_model: ""
+hermes_provider: ""
+
+# Use Secrets for these in Kubernetes/OpenShift.
+hermes_secret_env:
+  OPENAI_API_KEY: ""
+  OPENROUTER_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  GH_TOKEN: ""
+
+# Proxy-sensitive environments may need this for Node-based HTTP clients.
+hermes_runtime_env:
+  NODE_USE_ENV_PROXY: "1"
+  HERMES_HOME: /opt/hermes/.hermes
+
+# First channel to validate should be simple and well-understood.
+hermes_gateway:
+  enabled: false
+  first_channel: telegram
