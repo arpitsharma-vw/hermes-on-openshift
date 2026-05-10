@@ -26,7 +26,7 @@ RUN apt-get update \
 # Install Hermes in an isolated virtualenv to avoid installer-side shell assumptions.
 RUN python3 -m venv /opt/hermes/venv \
     && /opt/hermes/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && /opt/hermes/venv/bin/pip install --no-cache-dir "hermes-agent>=0.13.0" \
+    && /opt/hermes/venv/bin/pip install --no-cache-dir "git+https://github.com/NousResearch/hermes-agent.git@main" \
     && ln -sf /opt/hermes/venv/bin/hermes /usr/local/bin/hermes
 
 # OpenShift-friendly writable home path for random non-root UIDs.
