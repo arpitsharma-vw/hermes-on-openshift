@@ -1,62 +1,53 @@
-FROM debian:bookworm-slim
+# ─── Stage 1: Build the web frontend (Node ≥ 20 required) ──────────────────
+FROM node:20-slim AS frontend-builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/hermes/src
+RUN git clone --depth 1 https://github.com/NousResearch/hermes-agent.git .
+RUN cd web && npm install && npm run build
+
+# ─── Stage 2: Install Python package with pre-built frontend ────────────────
+FROM python:3.11-slim AS python-builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=frontend-builder /opt/hermes/src /opt/hermes/src
+
+RUN python3 -m venv /opt/hermes/hermes-agent/venv \
+    && /opt/hermes/hermes-agent/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /opt/hermes/hermes-agent/venv/bin/pip install --no-cache-dir "/opt/hermes/src[web]"
+
+# ─── Stage 3: Lean runtime image ────────────────────────────────────────────
+FROM python:3.11-slim
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     HERMES_HOME=/opt/hermes/.hermes \
     HERMES_INSTALL_DIR=/opt/hermes/hermes-agent \
-    PATH=/usr/local/bin:/usr/bin:/bin
+    PATH=/opt/hermes/hermes-agent/venv/bin:/usr/local/bin:/usr/bin:/bin
 
-USER root
-
-# Base runtime tools required by Hermes runtime and verification commands.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
     curl \
     findutils \
-    git \
     gzip \
-    python3 \
-    python3-venv \
-    python3-pip \
-    nodejs \
-    npm \
     ripgrep \
     ffmpeg \
     tar \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Hermes lazily at runtime to avoid CI build failures from upstream installer
-# or dependency resolution changes. First invocation of `hermes` bootstraps install.
-RUN cat <<'EOF' >/usr/local/bin/hermes
-#!/usr/bin/env bash
-set -euo pipefail
+# Copy venv (Python package + hermes binary) from builder
+COPY --from=python-builder /opt/hermes/hermes-agent/venv /opt/hermes/hermes-agent/venv
 
-HERMES_HOME="${HERMES_HOME:-/opt/hermes/.hermes}"
-HERMES_INSTALL_DIR="${HERMES_INSTALL_DIR:-/opt/hermes/hermes-agent}"
-HERMES_BIN="${HERMES_INSTALL_DIR}/venv/bin/hermes"
-
-if [[ ! -x "${HERMES_BIN}" ]]; then
-    echo "Bootstrapping Hermes installation into ${HERMES_INSTALL_DIR} ..."
-    mkdir -p "${HERMES_HOME}"
-    mkdir -p "${HERMES_INSTALL_DIR}"
-    tmp_dir="$(mktemp -d)"
-    trap 'rm -rf "${tmp_dir}"' EXIT
-    git clone --depth 1 https://github.com/NousResearch/hermes-agent.git "${tmp_dir}/src"
-    # Build the web frontend so the dashboard serves static assets.
-    if [[ -d "${tmp_dir}/src/web" ]]; then
-        ( cd "${tmp_dir}/src/web" && npm install --prefer-offline && npm run build )
-    fi
-    python3 -m venv "${HERMES_INSTALL_DIR}/venv"
-    "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel
-    "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir "${tmp_dir}/src[web]"
-fi
-
-exec "${HERMES_BIN}" "$@"
-EOF
-
-RUN chmod +x /usr/local/bin/hermes
+# Copy hermes source so the dashboard can find web/dist static assets
+COPY --from=frontend-builder /opt/hermes/src /opt/hermes/src
 
 # OpenShift-friendly writable home path for random non-root UIDs.
 RUN mkdir -p /opt/hermes/.hermes \

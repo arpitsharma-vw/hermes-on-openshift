@@ -190,9 +190,7 @@ spec:
                   exec hermes
                   ;;
                 dashboard)
-                  # Bootstrap installs hermes-agent[web] (fastapi+uvicorn) on first start.
-                  hermes --help >/dev/null 2>&1 || true
-                  exec hermes dashboard --host 0.0.0.0 --port "${HERMES_DASHBOARD_PORT}" --no-open
+                  exec hermes dashboard --host 0.0.0.0 --port "${HERMES_DASHBOARD_PORT}" --no-open --insecure
                   ;;
                 idle)
                   exec tail -f /dev/null
@@ -263,9 +261,7 @@ spec:
                   exec hermes
                   ;;
                 dashboard)
-                  # Bootstrap installs hermes-agent[web] (fastapi+uvicorn) on first start.
-                  hermes --help >/dev/null 2>&1 || true
-                  exec hermes dashboard --host 0.0.0.0 --port "${HERMES_DASHBOARD_PORT}" --no-open
+                  exec hermes dashboard --host 0.0.0.0 --port "${HERMES_DASHBOARD_PORT}" --no-open --insecure
                   ;;
                 idle)
                   exec tail -f /dev/null
