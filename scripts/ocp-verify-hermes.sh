@@ -20,6 +20,9 @@ set -a
 source "${ENV_FILE}"
 set +a
 
+# Do not route oc CLI traffic through deployment proxy settings.
+unset HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy
+
 NAMESPACE="${NAMESPACE:-hermes-agent}"
 APP_NAME="${APP_NAME:-hermes-agent}"
 

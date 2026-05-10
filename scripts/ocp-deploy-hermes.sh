@@ -31,11 +31,23 @@ PVC_SIZE="${PVC_SIZE:-5Gi}"
 STORAGE_CLASS="${STORAGE_CLASS:-}"
 HERMES_RUN_MODE="${HERMES_RUN_MODE:-gateway}"
 HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
+HERMES_INFERENCE_PROVIDER="${HERMES_INFERENCE_PROVIDER:-}"
+HERMES_INFERENCE_MODEL="${HERMES_INFERENCE_MODEL:-}"
+AZURE_FOUNDRY_BASE_URL="${AZURE_FOUNDRY_BASE_URL:-}"
 HTTP_PROXY="${HTTP_PROXY:-}"
 HTTPS_PROXY="${HTTPS_PROXY:-}"
 NO_PROXY="${NO_PROXY:-}"
 NODE_USE_ENV_PROXY="${NODE_USE_ENV_PROXY:-1}"
 IMAGE_PULL_SECRET="${IMAGE_PULL_SECRET:-}"
+TELEGRAM_SOURCE_SECRET_NAME="${TELEGRAM_SOURCE_SECRET_NAME:-}"
+INHERIT_SECRET_NAME="${INHERIT_SECRET_NAME:-${APP_NAME}-secrets}"
+ALLOW_INTERACTIVE_SECRET_PROMPT="${ALLOW_INTERACTIVE_SECRET_PROMPT:-false}"
+GATEWAY_ALLOW_ALL_USERS="${GATEWAY_ALLOW_ALL_USERS:-}"
+TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-}"
+
+if [[ -z "${AZURE_FOUNDRY_API_KEY:-}" ]] && [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  AZURE_FOUNDRY_API_KEY="${OPENAI_API_KEY}"
+fi
 
 RUNTIME_HTTP_PROXY="${HTTP_PROXY}"
 RUNTIME_HTTPS_PROXY="${HTTPS_PROXY}"
@@ -111,7 +123,14 @@ metadata:
     app.kubernetes.io/name: ${APP_NAME}
 data:
   HERMES_HOME: "${HERMES_HOME}"
+  HOME: "/opt/hermes"
+  XDG_STATE_HOME: "${HERMES_HOME}/xdg-state"
   HERMES_RUN_MODE: "${HERMES_RUN_MODE}"
+  HERMES_INFERENCE_PROVIDER: "${HERMES_INFERENCE_PROVIDER}"
+  HERMES_INFERENCE_MODEL: "${HERMES_INFERENCE_MODEL}"
+  AZURE_FOUNDRY_BASE_URL: "${AZURE_FOUNDRY_BASE_URL}"
+  GATEWAY_ALLOW_ALL_USERS: "${GATEWAY_ALLOW_ALL_USERS}"
+  TELEGRAM_ALLOWED_USERS: "${TELEGRAM_ALLOWED_USERS}"
   NODE_USE_ENV_PROXY: "${NODE_USE_ENV_PROXY}"
   HTTP_PROXY: "${RUNTIME_HTTP_PROXY}"
   HTTPS_PROXY: "${RUNTIME_HTTPS_PROXY}"
@@ -119,10 +138,33 @@ data:
 EOF
 
 echo "Applying Secret..."
+
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+  existing_openai_key_b64="$(oc get secret "${INHERIT_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null || true)"
+  if [[ -n "${existing_openai_key_b64}" ]]; then
+    OPENAI_API_KEY="$(printf '%s' "${existing_openai_key_b64}" | base64 --decode)"
+  fi
+fi
+
+if [[ -z "${AZURE_FOUNDRY_API_KEY:-}" ]]; then
+  existing_azure_key_b64="$(oc get secret "${INHERIT_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.AZURE_FOUNDRY_API_KEY}' 2>/dev/null || true)"
+  if [[ -n "${existing_azure_key_b64}" ]]; then
+    AZURE_FOUNDRY_API_KEY="$(printf '%s' "${existing_azure_key_b64}" | base64 --decode)"
+  elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
+    AZURE_FOUNDRY_API_KEY="${OPENAI_API_KEY}"
+  fi
+fi
+
+if [[ -z "${OPENAI_API_KEY:-}" ]] && [[ "${ALLOW_INTERACTIVE_SECRET_PROMPT}" == "true" ]] && [[ -t 0 ]]; then
+  read -r -s -p "OPENAI_API_KEY not set in env file. Enter a new key (leave blank to skip): " OPENAI_API_KEY
+  echo
+fi
+
 secret_args=()
 [[ -n "${OPENAI_API_KEY:-}" ]] && secret_args+=(--from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}")
 [[ -n "${OPENROUTER_API_KEY:-}" ]] && secret_args+=(--from-literal=OPENROUTER_API_KEY="${OPENROUTER_API_KEY}")
 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && secret_args+=(--from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}")
+[[ -n "${AZURE_FOUNDRY_API_KEY:-}" ]] && secret_args+=(--from-literal=AZURE_FOUNDRY_API_KEY="${AZURE_FOUNDRY_API_KEY}")
 [[ -n "${GH_TOKEN:-}" ]] && secret_args+=(--from-literal=GH_TOKEN="${GH_TOKEN}")
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}")
 [[ -n "${SLACK_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}")
@@ -140,6 +182,29 @@ else
     --namespace "${NAMESPACE}" \
     --dry-run=client -o yaml | oc apply -f -
 fi
+
+if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  if [[ -n "${TELEGRAM_SOURCE_SECRET_NAME}" ]]; then
+    source_telegram_token_b64="$(oc get secret "${TELEGRAM_SOURCE_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.TELEGRAM_BOT_TOKEN}' 2>/dev/null || true)"
+    if [[ -n "${source_telegram_token_b64}" ]]; then
+      oc patch secret "${APP_NAME}-secrets" -n "${NAMESPACE}" --type=merge \
+        -p '{"data":{"TELEGRAM_BOT_TOKEN":"'"${source_telegram_token_b64}"'"}}' >/dev/null
+      echo "TELEGRAM_BOT_TOKEN copied from secret ${TELEGRAM_SOURCE_SECRET_NAME} into ${APP_NAME}-secrets."
+    else
+      echo "TELEGRAM_BOT_TOKEN not provided and no key found in secret ${TELEGRAM_SOURCE_SECRET_NAME}."
+    fi
+  else
+    echo "TELEGRAM_BOT_TOKEN not provided and TELEGRAM_SOURCE_SECRET_NAME is not set."
+  fi
+fi
+
+for inherited_secret_key in OPENAI_API_KEY OPENROUTER_API_KEY ANTHROPIC_API_KEY AZURE_FOUNDRY_API_KEY GH_TOKEN SLACK_BOT_TOKEN DISCORD_BOT_TOKEN; do
+  inherited_secret_b64="$(oc get secret "${INHERIT_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.'"${inherited_secret_key}"'}' 2>/dev/null || true)"
+  if [[ -n "${inherited_secret_b64}" ]]; then
+    oc patch secret "${APP_NAME}-secrets" -n "${NAMESPACE}" --type=merge \
+      -p '{"data":{"'"${inherited_secret_key}"'":"'"${inherited_secret_b64}"'"}}' >/dev/null
+  fi
+done
 
 echo "Applying Deployment..."
 if [[ -n "${IMAGE_PULL_SECRET}" ]]; then
@@ -182,8 +247,35 @@ spec:
             - |
               set -eu
               mkdir -p "${HERMES_HOME}"
+              if [ ! -f "${HERMES_HOME}/config.yaml" ] && { [ -n "${HERMES_INFERENCE_PROVIDER}" ] || [ -n "${HERMES_INFERENCE_MODEL}" ] || [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; }; then
+                printf 'model:\n' > "${HERMES_HOME}/config.yaml"
+                printf '  provider: %s\n' "${HERMES_INFERENCE_PROVIDER:-auto}" >> "${HERMES_HOME}/config.yaml"
+                printf '  default: %s\n' "${HERMES_INFERENCE_MODEL}" >> "${HERMES_HOME}/config.yaml"
+                if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
+                  printf '  base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                  printf '  api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+                printf 'auxiliary:\n' >> "${HERMES_HOME}/config.yaml"
+                printf '  compression:\n' >> "${HERMES_HOME}/config.yaml"
+                if [ -n "${HERMES_INFERENCE_PROVIDER}" ]; then
+                  printf '    provider: %s\n' "${HERMES_INFERENCE_PROVIDER}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${HERMES_INFERENCE_MODEL}" ]; then
+                  printf '    model: %s\n' "${HERMES_INFERENCE_MODEL}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
+                  printf '    base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                  printf '    api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+              fi
               case "${HERMES_RUN_MODE}" in
                 gateway)
+                  /opt/hermes/hermes-agent/venv/bin/python -c "import telegram" >/dev/null 2>&1 \
+                    || /opt/hermes/hermes-agent/venv/bin/pip install --no-cache-dir python-telegram-bot
                   exec hermes gateway
                   ;;
                 chat)
@@ -253,8 +345,35 @@ spec:
             - |
               set -eu
               mkdir -p "${HERMES_HOME}"
+              if [ ! -f "${HERMES_HOME}/config.yaml" ] && { [ -n "${HERMES_INFERENCE_PROVIDER}" ] || [ -n "${HERMES_INFERENCE_MODEL}" ] || [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; }; then
+                printf 'model:\n' > "${HERMES_HOME}/config.yaml"
+                printf '  provider: %s\n' "${HERMES_INFERENCE_PROVIDER:-auto}" >> "${HERMES_HOME}/config.yaml"
+                printf '  default: %s\n' "${HERMES_INFERENCE_MODEL}" >> "${HERMES_HOME}/config.yaml"
+                if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
+                  printf '  base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                  printf '  api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+                printf 'auxiliary:\n' >> "${HERMES_HOME}/config.yaml"
+                printf '  compression:\n' >> "${HERMES_HOME}/config.yaml"
+                if [ -n "${HERMES_INFERENCE_PROVIDER}" ]; then
+                  printf '    provider: %s\n' "${HERMES_INFERENCE_PROVIDER}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${HERMES_INFERENCE_MODEL}" ]; then
+                  printf '    model: %s\n' "${HERMES_INFERENCE_MODEL}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
+                  printf '    base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                  printf '    api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+              fi
               case "${HERMES_RUN_MODE}" in
                 gateway)
+                  /opt/hermes/hermes-agent/venv/bin/python -c "import telegram" >/dev/null 2>&1 \
+                    || /opt/hermes/hermes-agent/venv/bin/pip install --no-cache-dir python-telegram-bot
                   exec hermes gateway
                   ;;
                 chat)
@@ -288,6 +407,7 @@ spec:
 EOF
 fi
 
+if [[ "${HERMES_RUN_MODE}" == "dashboard" ]]; then
 echo "Applying Service..."
 cat <<EOF | oc apply -f -
 apiVersion: v1
@@ -326,11 +446,19 @@ spec:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
 EOF
+else
+  echo "Gateway mode detected; removing dashboard Service/Route if present..."
+  oc delete route "${APP_NAME}" -n "${NAMESPACE}" --ignore-not-found=true >/dev/null
+  oc delete service "${APP_NAME}" -n "${NAMESPACE}" --ignore-not-found=true >/dev/null
+fi
 
 echo "Waiting for rollout..."
 oc rollout status deployment/"${APP_NAME}" --timeout=180s
 
-ROUTE_URL="$(oc get route "${APP_NAME}" -n "${NAMESPACE}" -o jsonpath='https://{.spec.host}' 2>/dev/null || true)"
+ROUTE_URL=""
+if [[ "${HERMES_RUN_MODE}" == "dashboard" ]]; then
+  ROUTE_URL="$(oc get route "${APP_NAME}" -n "${NAMESPACE}" -o jsonpath='https://{.spec.host}' 2>/dev/null || true)"
+fi
 
 echo "Deployment completed in namespace ${NAMESPACE}."
 if [[ -n "${ROUTE_URL}" ]]; then

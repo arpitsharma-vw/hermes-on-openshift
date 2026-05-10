@@ -1,198 +1,75 @@
 # Hermes on OpenShift
 
-This repo is a parallel working area for evaluating Hermes Agent in a way that matches the workflow used for OpenClaw, without mixing assumptions between the two projects.
+This repository deploys Hermes Agent on OpenShift for a team demo setup with:
 
-## Scope
+- Telegram gateway mode
+- Dashboard mode
+- Shared Hermes state between gateway and dashboard
+- Secrets managed in OpenShift secret objects (not in repo files)
 
-Current goal:
-- install Hermes cleanly on macOS
-- validate a working CLI session first
-- validate gateway setup second
-- capture OpenShift-specific requirements before building a hardened deployment
+## Current Deployment Pattern
 
-Non-goals for the first pass:
-- production-ready OpenShift manifests
-- security hardening parity with the OpenClaw repo
-- persistent bot deployment before local Hermes behavior is verified
+The recommended pattern is dual deployment in the same namespace:
 
-## Why Separate This Repo
+- hermes-agent: gateway mode (Telegram)
+- hermes-dashboard: dashboard mode (web UI)
 
-Hermes has different runtime assumptions than OpenClaw:
-- official install path is a shell installer, not a prebuilt container
-- config is split between `~/.hermes/config.yaml` and `~/.hermes/.env`
-- provider setup is interactive via `hermes model` or `hermes setup`
-- the gateway is a separate long-running Hermes process
-- Hermes docs explicitly recommend: get a normal CLI chat working first, then add gateway/messaging
+Both deployments can mount the same PVC (hermes-home) so dashboard and gateway see the same sessions and config.
 
-## What We Learned From Hermes Docs
+For full details, see [openshift/DUAL_DEPLOYMENT.md](openshift/DUAL_DEPLOYMENT.md).
 
-- Install on macOS with:
+## Security Model
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
-```
+- No credential values should be stored in files in this repo.
+- Keep credential fields blank in env files under openshift.
+- Create and rotate secrets directly in OpenShift.
+- Hermes and OpenClaw should be managed independently in their own repos/workflows.
 
-- After install:
+By default, this deploy flow does not pull credentials from other app secrets.
 
-```bash
-source ~/.zshrc
-hermes doctor
-hermes model
-hermes --tui
-```
+## Key Scripts
 
-- Hermes stores:
-  - secrets in `~/.hermes/.env`
-  - non-secret config in `~/.hermes/config.yaml`
+- [scripts/build-hermes-image.sh](scripts/build-hermes-image.sh): build/push Hermes image
+- [scripts/ocp-create-ghcr-pull-secret.sh](scripts/ocp-create-ghcr-pull-secret.sh): create GHCR pull secret
+- [scripts/ocp-registry-login.sh](scripts/ocp-registry-login.sh): OpenShift registry login helper
+- [scripts/ocp-deploy-hermes.sh](scripts/ocp-deploy-hermes.sh): deploy/update Hermes on OpenShift
+- [scripts/ocp-verify-hermes.sh](scripts/ocp-verify-hermes.sh): rollout and runtime verification
 
-- Hermes requires a model with at least a 64k context window.
-- Messaging setup should come only after the base CLI works.
-- Gateway setup entrypoint is:
+## Core Config Files
 
-```bash
-hermes gateway setup
-```
+- [openshift/hermes.env.example](openshift/hermes.env.example): gateway template
+- [openshift/hermes-dashboard.env.example](openshift/hermes-dashboard.env.example): dashboard template
+- [openshift/hermes.env](openshift/hermes.env): gateway runtime config
+- [openshift/hermes-dashboard.env](openshift/hermes-dashboard.env): dashboard runtime config
 
-## Recommended First Run Order
+## Quick Start
 
-1. Install Hermes locally on your Mac.
-2. Run `hermes doctor` and fix anything it reports.
-3. Configure a provider with `hermes model`.
-4. Run one clean chat in `hermes` or `hermes --tui`.
-5. Resume the session with `hermes --continue`.
-6. Only then enable messaging with `hermes gateway setup`.
-7. Only after that start container/OpenShift work.
-
-## Proxy Note
-
-Your environment already uses outbound proxies in OpenShift. Hermes is Node- and Python-based, so proxy behavior should be validated early.
-
-Start with these checks when moving beyond local CLI:
-
-```bash
-env | rg 'HTTP_PROXY|HTTPS_PROXY|NO_PROXY'
-hermes doctor
-```
-
-If Hermes or a Node-based sidecar needs explicit proxy support in a containerized environment, test `NODE_USE_ENV_PROXY=1` early rather than treating it as a late-stage fix.
-
-## Repo Layout
-
-- `IMPLEMENTATION_PLAN.md` — phased plan and acceptance criteria
-- `Containerfile` — self-managed Hermes runtime image build
-- `.github/workflows/build-ghcr-image.yml` — GitHub Actions build/push to GHCR
-- `scripts/bootstrap-local-macos.sh` — local install helper for macOS
-- `scripts/build-hermes-image.sh` — build/push Hermes image from this repo
-- `scripts/ocp-create-ghcr-pull-secret.sh` — create pull secret for private GHCR images
-- `scripts/ocp-registry-login.sh` — login helper for OpenShift internal registry
-- `scripts/ocp-deploy-hermes.sh` — OpenShift deploy automation
-- `scripts/ocp-verify-hermes.sh` — OpenShift smoke checks
-- `openshift/hermes.env.example` — deployment variable template (copy to `openshift/hermes.env`)
-- `vars/hermes.yml.example` — starter config for future container/OpenShift work
-
-## Private GitHub Repo Build (Recommended)
-
-If you want this in your private GitHub repo, build in GitHub Actions and publish to GHCR.
-
-1. Push this repo to your private GitHub repository.
-2. GitHub Action [build-ghcr-image.yml](.github/workflows/build-ghcr-image.yml) builds and pushes:
-  - `ghcr.io/<your-github-username>/<your-repo-name>:main`
-  - `ghcr.io/<your-github-username>/<your-repo-name>:latest`
-  - `ghcr.io/<your-github-username>/<your-repo-name>:sha-<commit>`
-
-Note: the image now bootstraps Hermes on first container startup (lazy install),
-which makes CI image build more reliable. First pod start requires outbound
-internet access to fetch Hermes installer and Python dependencies.
-3. In OpenShift, create a GHCR pull secret:
-
-```bash
-export GHCR_USERNAME=<your-github-username>
-export GHCR_TOKEN=<token-with-read-packages>
-./scripts/ocp-create-ghcr-pull-secret.sh <your-namespace> ghcr-pull-secret
-```
-
-4. In `openshift/hermes.env`, set:
-
-```bash
-HERMES_IMAGE=ghcr.io/<your-github-username>/<your-repo-name>:main
-IMAGE_PULL_SECRET=ghcr-pull-secret
-```
-
-## Build Your Own Hermes Image (Local Builder Alternative)
-
-Because there is no pre-provided image in this workflow, build one from this repo first.
-
-1. Prepare env file:
+1. Copy and edit env files (without putting credentials into them):
 
 ```bash
 cp openshift/hermes.env.example openshift/hermes.env
+cp openshift/hermes-dashboard.env.example openshift/hermes-dashboard.env
 ```
 
-2. Set `HERMES_IMAGE` in `openshift/hermes.env`, for example:
+2. Create/update OpenShift secrets manually from terminal prompts (see [openshift/DUAL_DEPLOYMENT.md](openshift/DUAL_DEPLOYMENT.md)).
 
-```bash
-HERMES_IMAGE=image-registry.openshift-image-registry.svc:5000/your-namespace/hermes-agent:latest
-```
-
-3. If using OpenShift internal registry, login first:
-
-```bash
-./scripts/ocp-registry-login.sh
-```
-
-4. Build and push image:
-
-```bash
-./scripts/build-hermes-image.sh openshift/hermes.env
-```
-
-5. Optional local-only build without push:
-
-```bash
-NO_PUSH=1 ./scripts/build-hermes-image.sh openshift/hermes.env
-```
-
-## OpenShift Handoff (Run After You Login)
-
-Once you authenticate to OpenShift, this repo is ready for deployment.
-
-1. Prepare deployment variables:
-
-```bash
-cp openshift/hermes.env.example openshift/hermes.env
-```
-
-2. Edit `openshift/hermes.env` and set at least:
-  - `HERMES_IMAGE` (required)
-  - one provider key (for example `OPENAI_API_KEY`)
-  - proxy vars if your cluster requires outbound proxy
-
-3. Deploy:
+3. Deploy gateway and dashboard:
 
 ```bash
 ./scripts/ocp-deploy-hermes.sh openshift/hermes.env
+./scripts/ocp-deploy-hermes.sh openshift/hermes-dashboard.env
 ```
 
-4. Verify rollout and runtime health:
+4. Verify:
 
 ```bash
 ./scripts/ocp-verify-hermes.sh openshift/hermes.env
+./scripts/ocp-verify-hermes.sh openshift/hermes-dashboard.env
 ```
 
-5. If you want to start in debug mode first, set:
+## Notes
 
-```bash
-HERMES_RUN_MODE=idle
-```
-
-Then redeploy and `oc exec` into the pod to run Hermes commands interactively.
-
-## Immediate Next Step (Local Baseline)
-
-Run:
-
-```bash
-./scripts/bootstrap-local-macos.sh
-```
-
-Then continue with the commands in `IMPLEMENTATION_PLAN.md`.
+- Gateway mode removes only its own service/route.
+- Dashboard mode creates its own service/route.
+- First pod start may install some runtime dependencies in-container.
+- If your cluster uses outbound proxies, set HTTP_PROXY/HTTPS_PROXY/NO_PROXY and NODE_USE_ENV_PROXY in env files.
