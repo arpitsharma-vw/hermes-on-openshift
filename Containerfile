@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5
+FROM debian:bookworm-slim
 
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
@@ -8,8 +8,8 @@ ENV LANG=en_US.UTF-8 \
 USER root
 
 # Base runtime tools required by the Hermes installer.
-# Keep this list minimal for better compatibility across build environments.
-RUN microdnf install -y \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
     curl \
@@ -17,7 +17,7 @@ RUN microdnf install -y \
     git \
     gzip \
     tar \
-    && microdnf clean all
+    && rm -rf /var/lib/apt/lists/*
 
 # Hermes upstream installer handles remaining runtime dependencies.
 RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
