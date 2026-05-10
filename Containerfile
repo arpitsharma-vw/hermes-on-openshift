@@ -7,20 +7,27 @@ ENV LANG=en_US.UTF-8 \
 
 USER root
 
-# Base runtime tools required by the Hermes installer.
+# Base runtime tools required by Hermes runtime and verification commands.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
     curl \
     findutils \
-    git \
     gzip \
+    python3 \
+    python3-venv \
+    python3-pip \
+    ripgrep \
+    ffmpeg \
     tar \
     && rm -rf /var/lib/apt/lists/*
 
-# Hermes upstream installer handles remaining runtime dependencies.
-RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+# Install Hermes in an isolated virtualenv to avoid installer-side shell assumptions.
+RUN python3 -m venv /opt/hermes/venv \
+    && /opt/hermes/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /opt/hermes/venv/bin/pip install --no-cache-dir "hermes-agent>=0.13.0" \
+    && ln -sf /opt/hermes/venv/bin/hermes /usr/local/bin/hermes
 
 # OpenShift-friendly writable home path for random non-root UIDs.
 RUN mkdir -p /opt/hermes/.hermes \
