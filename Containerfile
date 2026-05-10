@@ -20,6 +20,8 @@ RUN apt-get update \
     python3 \
     python3-venv \
     python3-pip \
+    nodejs \
+    npm \
     ripgrep \
     ffmpeg \
     tar \
@@ -42,6 +44,10 @@ if [[ ! -x "${HERMES_BIN}" ]]; then
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "${tmp_dir}"' EXIT
     git clone --depth 1 https://github.com/NousResearch/hermes-agent.git "${tmp_dir}/src"
+    # Build the web frontend so the dashboard serves static assets.
+    if [[ -d "${tmp_dir}/src/web" ]]; then
+        ( cd "${tmp_dir}/src/web" && npm install --prefer-offline && npm run build )
+    fi
     python3 -m venv "${HERMES_INSTALL_DIR}/venv"
     "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel
     "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir "${tmp_dir}/src[web]"
