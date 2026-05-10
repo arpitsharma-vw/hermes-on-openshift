@@ -99,6 +99,10 @@ If you want this in your private GitHub repo, build in GitHub Actions and publis
   - `ghcr.io/<your-github-username>/<your-repo-name>:main`
   - `ghcr.io/<your-github-username>/<your-repo-name>:latest`
   - `ghcr.io/<your-github-username>/<your-repo-name>:sha-<commit>`
+
+Note: the image now bootstraps Hermes on first container startup (lazy install),
+which makes CI image build more reliable. First pod start requires outbound
+internet access to fetch Hermes installer and Python dependencies.
 3. In OpenShift, create a GHCR pull secret:
 
 ```bash

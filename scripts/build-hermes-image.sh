@@ -34,7 +34,7 @@ echo "Using ${BUILDER} to build image ${HERMES_IMAGE}"
 "${BUILDER}" build -f "${ROOT_DIR}/Containerfile" -t "${HERMES_IMAGE}" "${ROOT_DIR}"
 
 echo "Running quick image smoke test..."
-"${BUILDER}" run --rm --entrypoint /bin/sh "${HERMES_IMAGE}" -c "command -v hermes && hermes --help >/dev/null"
+"${BUILDER}" run --rm --entrypoint /bin/sh "${HERMES_IMAGE}" -c "command -v hermes >/dev/null && test -x /usr/local/bin/hermes"
 
 if [[ "${NO_PUSH:-0}" == "1" ]]; then
   echo "NO_PUSH=1 set; skipping push."

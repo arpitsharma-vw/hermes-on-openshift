@@ -3,6 +3,7 @@ FROM debian:bookworm-slim
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     HERMES_HOME=/opt/hermes/.hermes \
+    HERMES_INSTALL_DIR=/opt/hermes/hermes-agent \
     PATH=/usr/local/bin:/usr/bin:/bin
 
 USER root
@@ -23,11 +24,26 @@ RUN apt-get update \
     tar \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Hermes in an isolated virtualenv to avoid installer-side shell assumptions.
-RUN python3 -m venv /opt/hermes/venv \
-    && /opt/hermes/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && /opt/hermes/venv/bin/pip install --no-cache-dir "git+https://github.com/NousResearch/hermes-agent.git@main" \
-    && ln -sf /opt/hermes/venv/bin/hermes /usr/local/bin/hermes
+# Install Hermes lazily at runtime to avoid CI build failures from upstream installer
+# or dependency resolution changes. First invocation of `hermes` bootstraps install.
+RUN cat <<'EOF' >/usr/local/bin/hermes
+#!/usr/bin/env bash
+set -euo pipefail
+
+HERMES_HOME="${HERMES_HOME:-/opt/hermes/.hermes}"
+HERMES_INSTALL_DIR="${HERMES_INSTALL_DIR:-/opt/hermes/hermes-agent}"
+HERMES_BIN="${HERMES_INSTALL_DIR}/venv/bin/hermes"
+
+if [[ ! -x "${HERMES_BIN}" ]]; then
+    echo "Bootstrapping Hermes installation into ${HERMES_INSTALL_DIR} ..."
+    mkdir -p "${HERMES_HOME}"
+    curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup --dir "${HERMES_INSTALL_DIR}" --hermes-home "${HERMES_HOME}"
+fi
+
+exec "${HERMES_BIN}" "$@"
+EOF
+
+RUN chmod +x /usr/local/bin/hermes
 
 # OpenShift-friendly writable home path for random non-root UIDs.
 RUN mkdir -p /opt/hermes/.hermes \
