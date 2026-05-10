@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
-ENV LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8 \
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
     HERMES_HOME=/opt/hermes/.hermes \
     HERMES_INSTALL_DIR=/opt/hermes/hermes-agent \
     PATH=/usr/local/bin:/usr/bin:/bin
@@ -37,7 +37,13 @@ HERMES_BIN="${HERMES_INSTALL_DIR}/venv/bin/hermes"
 if [[ ! -x "${HERMES_BIN}" ]]; then
     echo "Bootstrapping Hermes installation into ${HERMES_INSTALL_DIR} ..."
     mkdir -p "${HERMES_HOME}"
-    curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup --dir "${HERMES_INSTALL_DIR}" --hermes-home "${HERMES_HOME}"
+    mkdir -p "${HERMES_INSTALL_DIR}"
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "${tmp_dir}"' EXIT
+    git clone --depth 1 https://github.com/NousResearch/hermes-agent.git "${tmp_dir}/src"
+    python3 -m venv "${HERMES_INSTALL_DIR}/venv"
+    "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel
+    "${HERMES_INSTALL_DIR}/venv/bin/pip" install --no-cache-dir "${tmp_dir}/src"
 fi
 
 exec "${HERMES_BIN}" "$@"
