@@ -7,20 +7,16 @@ ENV LANG=en_US.UTF-8 \
 
 USER root
 
-# Base runtime tools required by the Hermes installer and common runtime tasks.
+# Base runtime tools required by the Hermes installer.
+# Keep this list minimal for better compatibility across build environments.
 RUN microdnf install -y \
     bash \
     ca-certificates \
-    coreutils \
     curl \
     findutils \
     git \
-    grep \
     gzip \
-    procps-ng \
-    shadow-utils \
     tar \
-    which \
     && microdnf clean all
 
 # Hermes upstream installer handles remaining runtime dependencies.
