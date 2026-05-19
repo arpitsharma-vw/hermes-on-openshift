@@ -221,14 +221,28 @@ if [[ -z "${http_proxy_secret_b64}" || -z "${https_proxy_secret_b64}" ]]; then
   if [[ -z "${http_proxy_secret_b64}" ]]; then
     http_proxy_host_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.http-proxy-url}' 2>/dev/null || true)"
     http_proxy_port_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.http-proxy-port}' 2>/dev/null || true)"
-    if [[ -n "${http_proxy_host_b64}" && -n "${http_proxy_port_b64}" && -n "${proxy_user_b64}" && -n "${proxy_password_b64}" ]]; then
+    if [[ -n "${http_proxy_host_b64}" ]]; then
       http_proxy_host="$(printf '%s' "${http_proxy_host_b64}" | base64 --decode)"
-      http_proxy_port="$(printf '%s' "${http_proxy_port_b64}" | base64 --decode)"
-      proxy_user="$(printf '%s' "${proxy_user_b64}" | base64 --decode)"
-      proxy_password="$(printf '%s' "${proxy_password_b64}" | base64 --decode)"
-      http_proxy_host="${http_proxy_host#http://}"
-      http_proxy_host="${http_proxy_host#https://}"
-      http_proxy_value="http://${proxy_user}:${proxy_password}@${http_proxy_host}:${http_proxy_port}"
+      if [[ "${http_proxy_host}" != http://* && "${http_proxy_host}" != https://* ]]; then
+        http_proxy_host="http://${http_proxy_host}"
+      fi
+
+      if [[ "${http_proxy_host}" == *"@"* ]]; then
+        http_proxy_value="${http_proxy_host}"
+      elif [[ -n "${proxy_user_b64}" && -n "${proxy_password_b64}" ]]; then
+        proxy_user="$(printf '%s' "${proxy_user_b64}" | base64 --decode)"
+        proxy_password="$(printf '%s' "${proxy_password_b64}" | base64 --decode)"
+        http_proxy_host_no_scheme="${http_proxy_host#http://}"
+        http_proxy_host_no_scheme="${http_proxy_host_no_scheme#https://}"
+        http_proxy_value="http://${proxy_user}:${proxy_password}@${http_proxy_host_no_scheme}"
+      else
+        http_proxy_value="${http_proxy_host}"
+      fi
+
+      if [[ -n "${http_proxy_port_b64}" ]] && [[ ! "${http_proxy_value}" =~ :[0-9]+$ ]]; then
+        http_proxy_port="$(printf '%s' "${http_proxy_port_b64}" | base64 --decode)"
+        http_proxy_value="${http_proxy_value}:${http_proxy_port}"
+      fi
       http_proxy_secret_b64="$(printf '%s' "${http_proxy_value}" | base64 | tr -d '\n')"
     fi
   fi
@@ -236,14 +250,28 @@ if [[ -z "${http_proxy_secret_b64}" || -z "${https_proxy_secret_b64}" ]]; then
   if [[ -z "${https_proxy_secret_b64}" ]]; then
     https_proxy_host_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.https-proxy-url}' 2>/dev/null || true)"
     https_proxy_port_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.https-proxy-port}' 2>/dev/null || true)"
-    if [[ -n "${https_proxy_host_b64}" && -n "${https_proxy_port_b64}" && -n "${proxy_user_b64}" && -n "${proxy_password_b64}" ]]; then
+    if [[ -n "${https_proxy_host_b64}" ]]; then
       https_proxy_host="$(printf '%s' "${https_proxy_host_b64}" | base64 --decode)"
-      https_proxy_port="$(printf '%s' "${https_proxy_port_b64}" | base64 --decode)"
-      proxy_user="$(printf '%s' "${proxy_user_b64}" | base64 --decode)"
-      proxy_password="$(printf '%s' "${proxy_password_b64}" | base64 --decode)"
-      https_proxy_host="${https_proxy_host#http://}"
-      https_proxy_host="${https_proxy_host#https://}"
-      https_proxy_value="https://${proxy_user}:${proxy_password}@${https_proxy_host}:${https_proxy_port}"
+      if [[ "${https_proxy_host}" != http://* && "${https_proxy_host}" != https://* ]]; then
+        https_proxy_host="https://${https_proxy_host}"
+      fi
+
+      if [[ "${https_proxy_host}" == *"@"* ]]; then
+        https_proxy_value="${https_proxy_host}"
+      elif [[ -n "${proxy_user_b64}" && -n "${proxy_password_b64}" ]]; then
+        proxy_user="$(printf '%s' "${proxy_user_b64}" | base64 --decode)"
+        proxy_password="$(printf '%s' "${proxy_password_b64}" | base64 --decode)"
+        https_proxy_host_no_scheme="${https_proxy_host#http://}"
+        https_proxy_host_no_scheme="${https_proxy_host_no_scheme#https://}"
+        https_proxy_value="https://${proxy_user}:${proxy_password}@${https_proxy_host_no_scheme}"
+      else
+        https_proxy_value="${https_proxy_host}"
+      fi
+
+      if [[ -n "${https_proxy_port_b64}" ]] && [[ ! "${https_proxy_value}" =~ :[0-9]+$ ]]; then
+        https_proxy_port="$(printf '%s' "${https_proxy_port_b64}" | base64 --decode)"
+        https_proxy_value="${https_proxy_value}:${https_proxy_port}"
+      fi
       https_proxy_secret_b64="$(printf '%s' "${https_proxy_value}" | base64 | tr -d '\n')"
     fi
   fi

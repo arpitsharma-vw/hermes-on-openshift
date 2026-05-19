@@ -72,4 +72,4 @@ cp openshift/hermes-dashboard.env.example openshift/hermes-dashboard.env
 - Gateway mode removes only its own service/route.
 - Dashboard mode creates its own service/route.
 - First pod start may install some runtime dependencies in-container.
-- If your cluster uses outbound proxies, set HTTP_PROXY/HTTPS_PROXY/NO_PROXY and NODE_USE_ENV_PROXY in env files.
+- If your cluster uses outbound proxies, set `PROXY_SECRET_NAME` (recommended) or set `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` directly, plus `NODE_USE_ENV_PROXY`.
