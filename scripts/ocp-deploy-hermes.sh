@@ -41,6 +41,7 @@ NODE_USE_ENV_PROXY="${NODE_USE_ENV_PROXY:-1}"
 IMAGE_PULL_SECRET="${IMAGE_PULL_SECRET:-}"
 TELEGRAM_SOURCE_SECRET_NAME="${TELEGRAM_SOURCE_SECRET_NAME:-}"
 INHERIT_SECRET_NAME="${INHERIT_SECRET_NAME:-${APP_NAME}-secrets}"
+PROXY_SECRET_NAME="${PROXY_SECRET_NAME:-${INHERIT_SECRET_NAME}}"
 ALLOW_INTERACTIVE_SECRET_PROMPT="${ALLOW_INTERACTIVE_SECRET_PROMPT:-false}"
 GATEWAY_ALLOW_ALL_USERS="${GATEWAY_ALLOW_ALL_USERS:-}"
 TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-}"
@@ -53,7 +54,7 @@ RUNTIME_HTTP_PROXY="${HTTP_PROXY}"
 RUNTIME_HTTPS_PROXY="${HTTPS_PROXY}"
 RUNTIME_NO_PROXY="${NO_PROXY}"
 
-# Keep proxy values for ConfigMap data, but do not let oc CLI use them.
+# Keep proxy values out of oc CLI environment.
 unset HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy
 
 if [[ -z "${HERMES_IMAGE}" ]]; then
@@ -132,9 +133,6 @@ data:
   GATEWAY_ALLOW_ALL_USERS: "${GATEWAY_ALLOW_ALL_USERS}"
   TELEGRAM_ALLOWED_USERS: "${TELEGRAM_ALLOWED_USERS}"
   NODE_USE_ENV_PROXY: "${NODE_USE_ENV_PROXY}"
-  HTTP_PROXY: "${RUNTIME_HTTP_PROXY}"
-  HTTPS_PROXY: "${RUNTIME_HTTPS_PROXY}"
-  NO_PROXY: "${RUNTIME_NO_PROXY}"
 EOF
 
 echo "Applying Secret..."
@@ -169,6 +167,9 @@ secret_args=()
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}")
 [[ -n "${SLACK_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}")
 [[ -n "${DISCORD_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=DISCORD_BOT_TOKEN="${DISCORD_BOT_TOKEN}")
+[[ -n "${RUNTIME_HTTP_PROXY:-}" ]] && secret_args+=(--from-literal=HTTP_PROXY="${RUNTIME_HTTP_PROXY}")
+[[ -n "${RUNTIME_HTTPS_PROXY:-}" ]] && secret_args+=(--from-literal=HTTPS_PROXY="${RUNTIME_HTTPS_PROXY}")
+[[ -n "${RUNTIME_NO_PROXY:-}" ]] && secret_args+=(--from-literal=NO_PROXY="${RUNTIME_NO_PROXY}")
 
 if (( ${#secret_args[@]} == 0 )); then
   echo "No secret values detected in ${ENV_FILE}; creating placeholder secret."
@@ -205,6 +206,61 @@ for inherited_secret_key in OPENAI_API_KEY OPENROUTER_API_KEY ANTHROPIC_API_KEY 
       -p '{"data":{"'"${inherited_secret_key}"'":"'"${inherited_secret_b64}"'"}}' >/dev/null
   fi
 done
+
+http_proxy_secret_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.HTTP_PROXY}' 2>/dev/null || true)"
+[[ -z "${http_proxy_secret_b64}" ]] && http_proxy_secret_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.http_proxy}' 2>/dev/null || true)"
+https_proxy_secret_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.HTTPS_PROXY}' 2>/dev/null || true)"
+[[ -z "${https_proxy_secret_b64}" ]] && https_proxy_secret_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.https_proxy}' 2>/dev/null || true)"
+no_proxy_secret_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.NO_PROXY}' 2>/dev/null || true)"
+[[ -z "${no_proxy_secret_b64}" ]] && no_proxy_secret_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.no_proxy}' 2>/dev/null || true)"
+
+if [[ -z "${http_proxy_secret_b64}" || -z "${https_proxy_secret_b64}" ]]; then
+  proxy_user_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.proxy-user}' 2>/dev/null || true)"
+  proxy_password_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.proxy-password}' 2>/dev/null || true)"
+
+  if [[ -z "${http_proxy_secret_b64}" ]]; then
+    http_proxy_host_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.http-proxy-url}' 2>/dev/null || true)"
+    http_proxy_port_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.http-proxy-port}' 2>/dev/null || true)"
+    if [[ -n "${http_proxy_host_b64}" && -n "${http_proxy_port_b64}" && -n "${proxy_user_b64}" && -n "${proxy_password_b64}" ]]; then
+      http_proxy_host="$(printf '%s' "${http_proxy_host_b64}" | base64 --decode)"
+      http_proxy_port="$(printf '%s' "${http_proxy_port_b64}" | base64 --decode)"
+      proxy_user="$(printf '%s' "${proxy_user_b64}" | base64 --decode)"
+      proxy_password="$(printf '%s' "${proxy_password_b64}" | base64 --decode)"
+      http_proxy_host="${http_proxy_host#http://}"
+      http_proxy_host="${http_proxy_host#https://}"
+      http_proxy_value="http://${proxy_user}:${proxy_password}@${http_proxy_host}:${http_proxy_port}"
+      http_proxy_secret_b64="$(printf '%s' "${http_proxy_value}" | base64 | tr -d '\n')"
+    fi
+  fi
+
+  if [[ -z "${https_proxy_secret_b64}" ]]; then
+    https_proxy_host_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.https-proxy-url}' 2>/dev/null || true)"
+    https_proxy_port_b64="$(oc get secret "${PROXY_SECRET_NAME}" -n "${NAMESPACE}" -o jsonpath='{.data.https-proxy-port}' 2>/dev/null || true)"
+    if [[ -n "${https_proxy_host_b64}" && -n "${https_proxy_port_b64}" && -n "${proxy_user_b64}" && -n "${proxy_password_b64}" ]]; then
+      https_proxy_host="$(printf '%s' "${https_proxy_host_b64}" | base64 --decode)"
+      https_proxy_port="$(printf '%s' "${https_proxy_port_b64}" | base64 --decode)"
+      proxy_user="$(printf '%s' "${proxy_user_b64}" | base64 --decode)"
+      proxy_password="$(printf '%s' "${proxy_password_b64}" | base64 --decode)"
+      https_proxy_host="${https_proxy_host#http://}"
+      https_proxy_host="${https_proxy_host#https://}"
+      https_proxy_value="https://${proxy_user}:${proxy_password}@${https_proxy_host}:${https_proxy_port}"
+      https_proxy_secret_b64="$(printf '%s' "${https_proxy_value}" | base64 | tr -d '\n')"
+    fi
+  fi
+fi
+
+if [[ -n "${http_proxy_secret_b64}" ]]; then
+  oc patch secret "${APP_NAME}-secrets" -n "${NAMESPACE}" --type=merge \
+    -p '{"data":{"HTTP_PROXY":"'"${http_proxy_secret_b64}"'"}}' >/dev/null
+fi
+if [[ -n "${https_proxy_secret_b64}" ]]; then
+  oc patch secret "${APP_NAME}-secrets" -n "${NAMESPACE}" --type=merge \
+    -p '{"data":{"HTTPS_PROXY":"'"${https_proxy_secret_b64}"'"}}' >/dev/null
+fi
+if [[ -n "${no_proxy_secret_b64}" ]]; then
+  oc patch secret "${APP_NAME}-secrets" -n "${NAMESPACE}" --type=merge \
+    -p '{"data":{"NO_PROXY":"'"${no_proxy_secret_b64}"'"}}' >/dev/null
+fi
 
 echo "Applying Deployment..."
 if [[ -n "${IMAGE_PULL_SECRET}" ]]; then

@@ -42,9 +42,14 @@ Set these in `hermes.env` before deployment:
 
 Optional but commonly needed:
 
-- `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`
+- `PROXY_SECRET_NAME` (Secret with `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` keys)
+- `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (fallback when not using secret)
 - `STORAGE_CLASS` for PVC provisioning behavior
 - `HERMES_RUN_MODE` (`gateway`, `chat`, or `idle`)
+
+If your proxy secret is `my-proxy-whitelist`, the deploy script also supports its key shape:
+`http-proxy-url`, `http-proxy-port`, `https-proxy-url`, `https-proxy-port`,
+`proxy-user`, `proxy-password` (it composes `HTTP_PROXY`/`HTTPS_PROXY` from these).
 
 ## Deploy
 
