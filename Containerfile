@@ -31,6 +31,8 @@ ENV LANG=C.UTF-8 \
     HERMES_INSTALL_DIR=/opt/hermes/hermes-agent \
     PATH=/opt/hermes/hermes-agent/venv/bin:/usr/local/bin:/usr/bin:/bin
 
+ARG KUBECTL_VERSION=v1.32.5
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     bash \
@@ -41,6 +43,14 @@ RUN apt-get update \
     ripgrep \
     ffmpeg \
     tar \
+    && ARCH="$(dpkg --print-architecture)" \
+    && case "${ARCH}" in \
+      amd64) KUBECTL_ARCH="amd64" ;; \
+      arm64) KUBECTL_ARCH="arm64" ;; \
+      *) echo "Unsupported architecture for kubectl: ${ARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl" -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy venv (Python package + hermes binary) from builder
