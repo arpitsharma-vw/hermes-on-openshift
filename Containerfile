@@ -32,6 +32,7 @@ ENV LANG=C.UTF-8 \
     PATH=/opt/hermes/hermes-agent/venv/bin:/usr/local/bin:/usr/bin:/bin
 
 ARG KUBECTL_VERSION=v1.32.5
+ARG TRIVY_VERSION=0.64.1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -51,6 +52,16 @@ RUN apt-get update \
     esac \
     && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl" -o /usr/local/bin/kubectl \
     && chmod +x /usr/local/bin/kubectl \
+    && case "${ARCH}" in \
+      amd64) TRIVY_ARCH="64bit" ;; \
+      arm64) TRIVY_ARCH="ARM64" ;; \
+      *) echo "Unsupported architecture for trivy: ${ARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${TRIVY_ARCH}.tar.gz" -o /tmp/trivy.tar.gz \
+    && tar -xzf /tmp/trivy.tar.gz -C /tmp trivy \
+    && mv /tmp/trivy /usr/local/bin/trivy \
+    && chmod +x /usr/local/bin/trivy \
+    && rm -f /tmp/trivy.tar.gz \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy venv (Python package + hermes binary) from builder
