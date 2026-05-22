@@ -35,6 +35,7 @@ HERMES_INFERENCE_PROVIDER="${HERMES_INFERENCE_PROVIDER:-}"
 HERMES_INFERENCE_MODEL="${HERMES_INFERENCE_MODEL:-}"
 HERMES_INFERENCE_API_MODE="${HERMES_INFERENCE_API_MODE:-}"
 AZURE_FOUNDRY_BASE_URL="${AZURE_FOUNDRY_BASE_URL:-}"
+AZURE_ANTHROPIC_KEY="${AZURE_ANTHROPIC_KEY:-}"
 HTTP_PROXY="${HTTP_PROXY:-}"
 HTTPS_PROXY="${HTTPS_PROXY:-}"
 NO_PROXY="${NO_PROXY:-}"
@@ -49,6 +50,10 @@ TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-}"
 
 if [[ -z "${AZURE_FOUNDRY_API_KEY:-}" ]] && [[ -n "${OPENAI_API_KEY:-}" ]]; then
   AZURE_FOUNDRY_API_KEY="${OPENAI_API_KEY}"
+fi
+
+if [[ -z "${AZURE_ANTHROPIC_KEY:-}" ]] && [[ -n "${AZURE_FOUNDRY_API_KEY:-}" ]]; then
+  AZURE_ANTHROPIC_KEY="${AZURE_FOUNDRY_API_KEY}"
 fi
 
 RUNTIME_HTTP_PROXY="${HTTP_PROXY}"
@@ -164,6 +169,7 @@ secret_args=()
 [[ -n "${OPENAI_API_KEY:-}" ]] && secret_args+=(--from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}")
 [[ -n "${OPENROUTER_API_KEY:-}" ]] && secret_args+=(--from-literal=OPENROUTER_API_KEY="${OPENROUTER_API_KEY}")
 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && secret_args+=(--from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}")
+[[ -n "${AZURE_ANTHROPIC_KEY:-}" ]] && secret_args+=(--from-literal=AZURE_ANTHROPIC_KEY="${AZURE_ANTHROPIC_KEY}")
 [[ -n "${AZURE_FOUNDRY_API_KEY:-}" ]] && secret_args+=(--from-literal=AZURE_FOUNDRY_API_KEY="${AZURE_FOUNDRY_API_KEY}")
 [[ -n "${GH_TOKEN:-}" ]] && secret_args+=(--from-literal=GH_TOKEN="${GH_TOKEN}")
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}")
