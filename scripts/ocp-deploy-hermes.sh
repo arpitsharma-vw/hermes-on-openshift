@@ -33,6 +33,7 @@ HERMES_RUN_MODE="${HERMES_RUN_MODE:-gateway}"
 HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
 HERMES_INFERENCE_PROVIDER="${HERMES_INFERENCE_PROVIDER:-}"
 HERMES_INFERENCE_MODEL="${HERMES_INFERENCE_MODEL:-}"
+HERMES_INFERENCE_API_MODE="${HERMES_INFERENCE_API_MODE:-}"
 AZURE_FOUNDRY_BASE_URL="${AZURE_FOUNDRY_BASE_URL:-}"
 HTTP_PROXY="${HTTP_PROXY:-}"
 HTTPS_PROXY="${HTTPS_PROXY:-}"
@@ -129,6 +130,7 @@ data:
   HERMES_RUN_MODE: "${HERMES_RUN_MODE}"
   HERMES_INFERENCE_PROVIDER: "${HERMES_INFERENCE_PROVIDER}"
   HERMES_INFERENCE_MODEL: "${HERMES_INFERENCE_MODEL}"
+  HERMES_INFERENCE_API_MODE: "${HERMES_INFERENCE_API_MODE}"
   AZURE_FOUNDRY_BASE_URL: "${AZURE_FOUNDRY_BASE_URL}"
   GATEWAY_ALLOW_ALL_USERS: "${GATEWAY_ALLOW_ALL_USERS}"
   TELEGRAM_ALLOWED_USERS: "${TELEGRAM_ALLOWED_USERS}"
@@ -338,7 +340,9 @@ spec:
                 if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
                   printf '  base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
                 fi
-                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                if [ -n "${HERMES_INFERENCE_API_MODE}" ]; then
+                  printf '  api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
+                elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '  api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
                 fi
                 printf 'auxiliary:\n' >> "${HERMES_HOME}/config.yaml"
@@ -352,7 +356,9 @@ spec:
                 if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
                   printf '    base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
                 fi
-                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                if [ -n "${HERMES_INFERENCE_API_MODE}" ]; then
+                  printf '    api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
+                elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '    api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
                 fi
               fi
@@ -436,7 +442,9 @@ spec:
                 if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
                   printf '  base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
                 fi
-                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                if [ -n "${HERMES_INFERENCE_API_MODE}" ]; then
+                  printf '  api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
+                elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '  api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
                 fi
                 printf 'auxiliary:\n' >> "${HERMES_HOME}/config.yaml"
@@ -450,7 +458,9 @@ spec:
                 if [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; then
                   printf '    base_url: %s\n' "${AZURE_FOUNDRY_BASE_URL}" >> "${HERMES_HOME}/config.yaml"
                 fi
-                if [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
+                if [ -n "${HERMES_INFERENCE_API_MODE}" ]; then
+                  printf '    api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
+                elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '    api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
                 fi
               fi
