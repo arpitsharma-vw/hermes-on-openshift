@@ -32,7 +32,7 @@ ENV LANG=C.UTF-8 \
     PATH=/opt/hermes/hermes-agent/venv/bin:/usr/local/bin:/usr/bin:/bin
 
 ARG KUBECTL_VERSION=v1.32.5
-ARG TRIVY_VERSION=0.64.1
+ARG TRIVY_VERSION=0.70.0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
