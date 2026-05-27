@@ -1,12 +1,14 @@
 # ─── Stage 1: Build the web frontend (Node ≥ 20 required) ──────────────────
 FROM node:20-slim AS frontend-builder
 
+ARG HERMES_REF=v0.14.0
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/hermes/src
-RUN git clone --depth 1 https://github.com/NousResearch/hermes-agent.git .
+RUN git clone --branch "${HERMES_REF}" --depth 1 https://github.com/NousResearch/hermes-agent.git .
 RUN cd web && npm install && npm run build
 
 # ─── Stage 2: Install Python package with pre-built frontend ────────────────
