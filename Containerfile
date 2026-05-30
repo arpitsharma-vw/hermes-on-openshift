@@ -1,7 +1,7 @@
 # ─── Stage 1: Build the web frontend (Node ≥ 20 required) ──────────────────
 FROM node:20-slim AS frontend-builder
 
-ARG HERMES_REF=v2026.5.29.2
+ARG HERMES_REF=main
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
