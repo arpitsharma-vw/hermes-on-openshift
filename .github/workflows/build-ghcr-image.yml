@@ -18,6 +18,8 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    env:
+      HERMES_REF: v0.16.0
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,6 +54,8 @@ jobs:
         with:
           context: .
           file: ./Containerfile
+          build-args: |
+            HERMES_REF=${{ env.HERMES_REF }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
