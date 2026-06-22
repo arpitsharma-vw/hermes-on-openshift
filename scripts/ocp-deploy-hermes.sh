@@ -36,6 +36,10 @@ HERMES_INFERENCE_MODEL="${HERMES_INFERENCE_MODEL:-}"
 HERMES_INFERENCE_API_MODE="${HERMES_INFERENCE_API_MODE:-}"
 AZURE_FOUNDRY_BASE_URL="${AZURE_FOUNDRY_BASE_URL:-}"
 AZURE_ANTHROPIC_KEY="${AZURE_ANTHROPIC_KEY:-}"
+LLMAAS_TOKEN_URL="${LLMAAS_TOKEN_URL:-https://idp.cloud.vwgroup.com/auth/realms/kums-mfa/protocol/openid-connect/token}"
+LLMAAS_CLIENT_ID="${LLMAAS_CLIENT_ID:-}"
+LLMAAS_CLIENT_SECRET="${LLMAAS_CLIENT_SECRET:-}"
+LLMAAS_VIRTUAL_KEY="${LLMAAS_VIRTUAL_KEY:-}"
 HTTP_PROXY="${HTTP_PROXY:-}"
 HTTPS_PROXY="${HTTPS_PROXY:-}"
 NO_PROXY="${NO_PROXY:-}"
@@ -137,6 +141,8 @@ data:
   HERMES_INFERENCE_MODEL: "${HERMES_INFERENCE_MODEL}"
   HERMES_INFERENCE_API_MODE: "${HERMES_INFERENCE_API_MODE}"
   AZURE_FOUNDRY_BASE_URL: "${AZURE_FOUNDRY_BASE_URL}"
+  LLMAAS_TOKEN_URL: "${LLMAAS_TOKEN_URL}"
+  LLMAAS_CLIENT_ID: "${LLMAAS_CLIENT_ID}"
   GATEWAY_ALLOW_ALL_USERS: "${GATEWAY_ALLOW_ALL_USERS}"
   TELEGRAM_ALLOWED_USERS: "${TELEGRAM_ALLOWED_USERS}"
   NODE_USE_ENV_PROXY: "${NODE_USE_ENV_PROXY}"
@@ -171,6 +177,8 @@ secret_args=()
 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && secret_args+=(--from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}")
 [[ -n "${AZURE_ANTHROPIC_KEY:-}" ]] && secret_args+=(--from-literal=AZURE_ANTHROPIC_KEY="${AZURE_ANTHROPIC_KEY}")
 [[ -n "${AZURE_FOUNDRY_API_KEY:-}" ]] && secret_args+=(--from-literal=AZURE_FOUNDRY_API_KEY="${AZURE_FOUNDRY_API_KEY}")
+[[ -n "${LLMAAS_CLIENT_SECRET:-}" ]] && secret_args+=(--from-literal=LLMAAS_CLIENT_SECRET="${LLMAAS_CLIENT_SECRET}")
+[[ -n "${LLMAAS_VIRTUAL_KEY:-}" ]] && secret_args+=(--from-literal=LLMAAS_VIRTUAL_KEY="${LLMAAS_VIRTUAL_KEY}")
 [[ -n "${GH_TOKEN:-}" ]] && secret_args+=(--from-literal=GH_TOKEN="${GH_TOKEN}")
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}")
 [[ -n "${SLACK_BOT_TOKEN:-}" ]] && secret_args+=(--from-literal=SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}")
@@ -339,6 +347,18 @@ spec:
             - |
               set -eu
               mkdir -p "${HERMES_HOME}"
+              # Fetch llmgateway OAuth2 access token if llmaas credentials are present.
+              # Tokens typically expire in ~1 hour; restart the pod or add a sidecar to refresh.
+              if [ -n "${LLMAAS_CLIENT_ID:-}" ] && [ -n "${LLMAAS_CLIENT_SECRET:-}" ]; then
+                echo "Fetching llmgateway OAuth2 access token..."
+                _token_json=$(curl -sf -X POST "${LLMAAS_TOKEN_URL}" \
+                  --data-urlencode "client_id=${LLMAAS_CLIENT_ID}" \
+                  --data-urlencode "client_secret=${LLMAAS_CLIENT_SECRET}" \
+                  --data-urlencode "grant_type=client_credentials")
+                AZURE_FOUNDRY_API_KEY=$(printf '%s' "${_token_json}" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+                export AZURE_FOUNDRY_API_KEY
+                unset _token_json
+              fi
               if [ ! -f "${HERMES_HOME}/config.yaml" ] && { [ -n "${HERMES_INFERENCE_PROVIDER}" ] || [ -n "${HERMES_INFERENCE_MODEL}" ] || [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; }; then
                 printf 'model:\n' > "${HERMES_HOME}/config.yaml"
                 printf '  provider: %s\n' "${HERMES_INFERENCE_PROVIDER:-auto}" >> "${HERMES_HOME}/config.yaml"
@@ -350,6 +370,10 @@ spec:
                   printf '  api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
                 elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '  api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${LLMAAS_VIRTUAL_KEY:-}" ]; then
+                  printf '  extra_headers:\n' >> "${HERMES_HOME}/config.yaml"
+                  printf '    X-LLM-API-CLIENT-ID: "Bearer %s"\n' "${LLMAAS_VIRTUAL_KEY}" >> "${HERMES_HOME}/config.yaml"
                 fi
                 printf 'auxiliary:\n' >> "${HERMES_HOME}/config.yaml"
                 printf '  compression:\n' >> "${HERMES_HOME}/config.yaml"
@@ -366,6 +390,10 @@ spec:
                   printf '    api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
                 elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '    api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${LLMAAS_VIRTUAL_KEY:-}" ]; then
+                  printf '    extra_headers:\n' >> "${HERMES_HOME}/config.yaml"
+                  printf '      X-LLM-API-CLIENT-ID: "Bearer %s"\n' "${LLMAAS_VIRTUAL_KEY}" >> "${HERMES_HOME}/config.yaml"
                 fi
               fi
               case "${HERMES_RUN_MODE}" in
@@ -441,6 +469,18 @@ spec:
             - |
               set -eu
               mkdir -p "${HERMES_HOME}"
+              # Fetch llmgateway OAuth2 access token if llmaas credentials are present.
+              # Tokens typically expire in ~1 hour; restart the pod or add a sidecar to refresh.
+              if [ -n "${LLMAAS_CLIENT_ID:-}" ] && [ -n "${LLMAAS_CLIENT_SECRET:-}" ]; then
+                echo "Fetching llmgateway OAuth2 access token..."
+                _token_json=$(curl -sf -X POST "${LLMAAS_TOKEN_URL}" \
+                  --data-urlencode "client_id=${LLMAAS_CLIENT_ID}" \
+                  --data-urlencode "client_secret=${LLMAAS_CLIENT_SECRET}" \
+                  --data-urlencode "grant_type=client_credentials")
+                AZURE_FOUNDRY_API_KEY=$(printf '%s' "${_token_json}" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+                export AZURE_FOUNDRY_API_KEY
+                unset _token_json
+              fi
               if [ ! -f "${HERMES_HOME}/config.yaml" ] && { [ -n "${HERMES_INFERENCE_PROVIDER}" ] || [ -n "${HERMES_INFERENCE_MODEL}" ] || [ -n "${AZURE_FOUNDRY_BASE_URL}" ]; }; then
                 printf 'model:\n' > "${HERMES_HOME}/config.yaml"
                 printf '  provider: %s\n' "${HERMES_INFERENCE_PROVIDER:-auto}" >> "${HERMES_HOME}/config.yaml"
@@ -452,6 +492,10 @@ spec:
                   printf '  api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
                 elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '  api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${LLMAAS_VIRTUAL_KEY:-}" ]; then
+                  printf '  extra_headers:\n' >> "${HERMES_HOME}/config.yaml"
+                  printf '    X-LLM-API-CLIENT-ID: "Bearer %s"\n' "${LLMAAS_VIRTUAL_KEY}" >> "${HERMES_HOME}/config.yaml"
                 fi
                 printf 'auxiliary:\n' >> "${HERMES_HOME}/config.yaml"
                 printf '  compression:\n' >> "${HERMES_HOME}/config.yaml"
@@ -468,6 +512,10 @@ spec:
                   printf '    api_mode: %s\n' "${HERMES_INFERENCE_API_MODE}" >> "${HERMES_HOME}/config.yaml"
                 elif [ "${HERMES_INFERENCE_PROVIDER}" = "azure-foundry" ]; then
                   printf '    api_mode: %s\n' 'chat_completions' >> "${HERMES_HOME}/config.yaml"
+                fi
+                if [ -n "${LLMAAS_VIRTUAL_KEY:-}" ]; then
+                  printf '    extra_headers:\n' >> "${HERMES_HOME}/config.yaml"
+                  printf '      X-LLM-API-CLIENT-ID: "Bearer %s"\n' "${LLMAAS_VIRTUAL_KEY}" >> "${HERMES_HOME}/config.yaml"
                 fi
               fi
               case "${HERMES_RUN_MODE}" in
