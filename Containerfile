@@ -1,7 +1,7 @@
 # ─── Stage 1: Build the web frontend (Node ≥ 20 required) ──────────────────
 FROM node:20-slim AS frontend-builder
 
-ARG HERMES_REF=v2026.6.5
+ARG HERMES_REF=v2026.6.19
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
@@ -68,6 +68,10 @@ RUN apt-get update \
 
 # Copy venv (Python package + hermes binary) from builder
 COPY --from=python-builder /opt/hermes/hermes-agent/venv /opt/hermes/hermes-agent/venv
+
+# Copy LLMAAS OAuth2 token-refresher sidecar script.
+COPY scripts/llmaas-token-refresher.py /usr/local/bin/llmaas-token-refresher.py
+RUN chmod +x /usr/local/bin/llmaas-token-refresher.py
 
 # Copy hermes source so the dashboard can find web/dist static assets
 COPY --from=frontend-builder /opt/hermes/src /opt/hermes/src

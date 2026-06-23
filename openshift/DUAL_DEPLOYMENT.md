@@ -21,6 +21,19 @@ Both can share the same Hermes state volume so the dashboard sees the same sessi
 - Use `INHERIT_SECRET_NAME=hermes-agent-secrets` for the dashboard deployment so it reuses provider credentials.
 - Use `PVC_NAME=hermes-home` in the dashboard deployment to share the same Hermes state and history.
 
+## Token Refresh Sidecar
+
+When the cluster is configured for the LLMAAS gateway (`azure-foundry` provider against `https://llmapi.ai.vwgroup.com`), both `hermes-agent` and `hermes-dashboard` Deployments get a `token-refresher` sidecar container. Each pod refreshes its own access token independently — the agent sidecar patches `hermes-agent-secrets` and restarts `hermes-agent`, the dashboard sidecar patches `hermes-dashboard-secrets` and restarts `hermes-dashboard`. Timing skew between the two pods is acceptable because the JWT TTL (~30 minutes) far exceeds any realistic skew between two pods in the same namespace, and both sidecars patch both secrets (via `MIRROR_TO_ANTHROPIC=true`) so either sidecar can recover the other.
+
+The sidecar logs are separate from the main container; inspect them with:
+
+```bash
+oc logs deploy/hermes-agent -c token-refresher -n "$NAMESPACE"
+oc logs deploy/hermes-dashboard -c token-refresher -n "$NAMESPACE"
+```
+
+Tunables (`REFRESH_INTERVAL_SECONDS`, `RETRY_INTERVAL_SECONDS`, `INITIAL_DELAY_SECONDS`, `MIRROR_TO_ANTHROPIC`) and the credential `LLMAAS_CLIENT_ID` are documented in [README.md](README.md#token-refresh-sidecar-llmaas).
+
 ## Demo Secrets (No Credentials In Files)
 
 Create and manage Hermes secrets in this repo/workflow only.
